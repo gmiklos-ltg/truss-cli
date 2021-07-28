@@ -1,11 +1,13 @@
 package cmd
 
 import (
-	"fmt"
+	"os"
 
 	"github.com/instructure-bridge/truss-cli/truss"
-	"github.com/sergi/go-diff/diffmatchpatch"
 	"github.com/spf13/cobra"
+
+	"github.com/homeport/dyff/pkg/dyff"
+	"github.com/gonvenience/ytbx"
 )
 
 var secretsViewCmd = &cobra.Command{
@@ -35,13 +37,40 @@ func secretCompare(sm *truss.SecretsManager, secret truss.SecretConfig, localToR
 		return false, err
 	}
 
-	dmp := diffmatchpatch.New()
-	var diffs []diffmatchpatch.Diff
-	if localToRemote {
-		diffs = dmp.DiffMain(remoteContent, localContent, false)
-	} else {
-		diffs = dmp.DiffMain(localContent, remoteContent, false)
+	localDocs, err := ytbx.LoadYAMLDocuments([]byte(localContent))
+	if err != nil {
+		return false, err
 	}
-	fmt.Println(dmp.DiffPrettyText(diffs))
+
+	remoteDocs, err := ytbx.LoadYAMLDocuments([]byte(remoteContent))
+	if err != nil {
+		return false, err
+	}
+
+	localFile := ytbx.InputFile {
+		Location: "local-changes",
+		Documents: localDocs,
+	}
+
+	remoteFile := ytbx.InputFile {
+		Location: "remote-changes",
+		Documents: remoteDocs,
+	}
+
+	report, err := dyff.CompareInputFiles(remoteFile, localFile)
+
+	reporter := dyff.HumanReport{
+		Report:            report,
+		DoNotInspectCerts: false,
+		NoTableStyle:      false,
+		OmitHeader:        true,
+	}
+
+	println(len(report.Diffs))
+
+	if err = reporter.WriteReport(os.Stdout); err != nil {
+		return false, err
+	}
+
 	return remoteContent == localContent, nil
 }
